@@ -1,42 +1,201 @@
+/* src/App.css */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+  height: 100%;
+}
+
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+  height: 100%;
+}
+
+.App {
+  display: flex;
+  flex-direction: column;
+  height: 100vh; /* Full viewport height */
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+/* Header Styles */
+.App-header {
+  background-color: #4a90e2; /* Pleasant blue */
+  color: white;
+  padding: 10px 20px;
   text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10; /* Keep header above chat */
+}
+.App-header h2 {
+  margin: 0;
+  font-size: 1.2em;
+}
+.connection-status {
+  font-size: 0.8em;
+  margin-top: 5px;
+  opacity: 0.9;
+}
+.connected {
+  color: #b8e986; /* Light green */
+  font-weight: bold;
+}
+.disconnected {
+  color: #f5a623; /* Orange/Yellow */
+  font-weight: bold;
+}
+.connect-button {
+  margin-left: 10px;
+  padding: 2px 6px;
+  font-size: 0.9em;
+  background-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid white;
+  color: white;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.connect-button:hover {
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* Chat Window Styles */
+.chat-window {
+  flex-grow: 1; /* Takes up available space */
+  overflow-y: auto; /* Enables scrolling */
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px; /* Space between messages */
+  background-color: #e9ebee; /* Light grey background for chat */
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.message {
+  display: flex;
+  flex-direction: column;
+  max-width: 75%; /* Max width of message bubble */
+  padding: 10px 15px;
+  border-radius: 18px; /* Bubble shape */
+  position: relative; /* For timestamp positioning if needed */
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
+.message .timestamp {
+  font-size: 0.7em;
   color: #888;
+  margin-bottom: 4px;
+  align-self: flex-start; /* Default alignment */
+}
+
+/* User Message Styles */
+.message.user {
+  align-self: flex-end; /* Align user messages to the right */
+  background-color: #dcf8c6; /* WhatsApp-like green */
+  margin-left: auto; /* Push to the right */
+}
+.message.user .timestamp {
+  align-self: flex-end; /* Timestamp on the right for user */
+}
+.message.user .audio-message audio {
+  display: block; /* Ensure audio takes block space */
+  min-width: 250px; /* Give audio player some width */
+  filter: sepia(30%) saturate(70%) brightness(90%) hue-rotate(80deg); /* Style the player slightly */
+}
+
+/* AI Placeholder Message Styles */
+.message.ai_placeholder {
+  align-self: flex-start; /* Align AI to the left */
+  background-color: #ffffff; /* White background */
+  margin-right: auto; /* Push to the left */
+  border: 1px solid #eee;
+}
+.message.ai_placeholder .ai-text {
+  margin: 0;
+  font-style: italic;
+  color: #555;
+}
+
+/* System Message Styles */
+.message.system {
+  align-self: center; /* Center system messages */
+  background-color: transparent;
+  color: #666;
+  font-size: 0.85em;
+  text-align: center;
+  max-width: 90%;
+  padding: 5px 0;
+}
+.message.system .system-text {
+  margin: 0;
+}
+.message.system .timestamp {
+  display: none; /* Hide timestamp for system messages */
+}
+
+/* Footer/Input Area Styles */
+.App-footer {
+  padding: 15px 20px;
+  background-color: #f0f0f0; /* Match App background */
+  border-top: 1px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+  z-index: 10; /* Keep footer above chat */
+}
+
+.status-line {
+  margin: 0 0 10px 0;
+  font-size: 0.9em;
+  color: #555;
+  min-height: 1.2em; /* Prevent layout shifts */
+}
+
+.record-button {
+  padding: 12px 25px;
+  font-size: 1.1em;
+  border-radius: 25px; /* Pill shape */
+  border: none;
+  cursor: pointer;
+  background-color: #4caf50; /* Green */
+  color: white;
+  transition: background-color 0.3s ease;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.record-button:hover:not(:disabled) {
+  background-color: #45a049;
+}
+
+.record-button.recording {
+  background-color: #f44336; /* Red */
+}
+
+.record-button.recording:hover:not(:disabled) {
+  background-color: #da190b;
+}
+
+.record-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* Add a recording indicator using pseudo-elements if desired */
+.record-button.recording::before {
+  content: "🔴"; /* Or use an SVG/Icon font */
+  margin-right: 8px;
+  font-size: 0.8em;
+  animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }

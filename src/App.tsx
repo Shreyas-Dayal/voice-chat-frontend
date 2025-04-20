@@ -3,7 +3,7 @@ import './App.css';
 
 // --- Constants ---
 const BACKEND_WS_URL = import.meta.env.VITE_BACKEND_WS_URL || 'ws://localhost:8080';
-const TARGET_SAMPLE_RATE = 16000; // For mic input processing & playback of received PCM16
+const TARGET_SAMPLE_RATE = 24000; // For mic input processing & playback of received PCM16
 
 // --- WAV Header Function ---
 function addWavHeader(pcmData, sampleRate, numChannels, bytesPerSample) {
@@ -58,6 +58,31 @@ function floatTo16BitPCM(input) {
     } return output;
 }
 
+// --- NEW: Function to trigger download ---
+function downloadData(dataBuffer, filename) {
+  try {
+    if (!dataBuffer || dataBuffer.byteLength === 0) {
+        console.error("Download cancelled: No data to download.");
+        alert("No audio data available to download for the last response.");
+        return;
+    }
+    const blob = new Blob([dataBuffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+    console.log(`Triggered download for ${filename}`);
+  } catch (e) {
+    console.error("Error triggering download:", e);
+    alert(`Failed to trigger download: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 
 function App() {
     const [isConnected, setIsConnected] = useState(false);
@@ -67,14 +92,15 @@ function App() {
     const [statusMessage, setStatusMessage] = useState('Idle');
     const [transcript, setTranscript] = useState('');
     const [currentUtterance, setCurrentUtterance] = useState('');
+    // State to hold buffer for download
+    const [lastRawAudioBuffer, setLastRawAudioBuffer] = useState<ArrayBuffer | null>(null);
 
     const ws = useRef<WebSocket | null>(null);
-    // Use a more descriptive name for the ref holding node references
     const audioProcessingNodes = useRef<{ sourceNode: MediaStreamAudioSourceNode | null, processorNode: ScriptProcessorNode | null } | null>(null);
     const audioContext = useRef<AudioContext | null>(null);
-    const currentResponseAudioBuffer = useRef<ArrayBuffer[]>([]); // Stores ArrayBuffers for the response being received
-    const sourceNode = useRef<AudioBufferSourceNode | null>(null); // Currently playing Web Audio source
-    const streamRef = useRef<MediaStream | null>(null); // MediaStream from mic
+    const currentResponseAudioBuffer = useRef<ArrayBuffer[]>([]);
+    const sourceNode = useRef<AudioBufferSourceNode | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
 
     const isRecordingRef = useRef(isRecording);
     const didAttemptInitialConnect = useRef(false);
@@ -90,6 +116,7 @@ function App() {
             const cleanupCheck = () => { if (ws.current === null || (ws.current && ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING)) { console.log("Resetting initial connect flag."); didAttemptInitialConnect.current = false; }};
             return cleanupCheck;
         }
+        // ComponentDidUnmount logic
         return () => {
             console.log("Cleanup: Stopping/Closing...");
              if (isRecordingRef.current) {
@@ -102,6 +129,12 @@ function App() {
             ws.current = null;
             if (audioContext.current && audioContext.current.state !== 'closed') {
                 console.log("Cleanup: Closing AudioContext.");
+                // Stop any playing source before closing context
+                if (sourceNode.current) {
+                     try { sourceNode.current.stop(); } catch(e) {}
+                     try { sourceNode.current.disconnect(); } catch(e) {}
+                     sourceNode.current = null;
+                }
                 audioContext.current.close().catch(e => console.error("Error closing AC:", e));
             }
             audioContext.current = null;
@@ -118,6 +151,8 @@ function App() {
         }
          if (!fullAudioBuffer || fullAudioBuffer.byteLength === 0) {
              console.warn("Attempted to play empty concatenated audio buffer.");
+             // Ensure speaking state is false if nothing to play
+             if (isAISpeaking) setIsAISpeaking(false);
              return;
          }
 
@@ -130,8 +165,8 @@ function App() {
                 audioContext.current.resume().then(() => {
                     console.log("Resumed AC for playback.");
                     setIsAISpeaking(false); // Allow retry now context is ready
-                    // Debounce or add delay before retry? For now, just allow retry.
-                    // requestAnimationFrame(() => playConcatenatedAudio(fullAudioBuffer)); // Could cause loop
+                    // It might be better to schedule the retry slightly later
+                    setTimeout(() => playConcatenatedAudio(fullAudioBuffer), 100);
                 }).catch(e => { console.error("Failed to resume AC:", e); setIsAISpeaking(false); });
              } else { setIsAISpeaking(false); }
              return;
@@ -145,10 +180,10 @@ function App() {
             audioContext.current.decodeAudioData(wavBuffer)
                 .then(decodedData => {
                     if (!audioContext.current) { console.warn("AC closed before playback."); setIsAISpeaking(false); return; }
-                    // Stop previous source if it exists and is playing?
+                    // Stop previous source if it exists
                     if (sourceNode.current) {
-                        try { sourceNode.current.stop(); } catch(e) {/* ignore if already stopped */}
-                        try { sourceNode.current.disconnect(); } catch(e) {/* ignore */}
+                        try { sourceNode.current.stop(); } catch(e) {}
+                        try { sourceNode.current.disconnect(); } catch(e) {}
                         sourceNode.current = null;
                     }
 
@@ -159,7 +194,6 @@ function App() {
                         console.log("Concatenated audio finished playing.");
                         setIsAISpeaking(false);
                         sourceNode.current = null; // Clear completed source node
-                        // No need to check queue anymore
                         updateStatus(isAIReady ? 'AI Ready' : 'Connecting...'); // Reset status
                     };
                     sourceNode.current.start(0);
@@ -205,7 +239,6 @@ function App() {
         ws.current.onerror = (error) => {
             console.error('WS error:', error);
             updateStatus('Connection error');
-            // Consider closing the WebSocket manually here if it's not already closing
             if(ws.current && ws.current.readyState !== WebSocket.CLOSING && ws.current.readyState !== WebSocket.CLOSED) {
                  ws.current.close();
             }
@@ -240,12 +273,13 @@ function App() {
                 setCurrentUtterance('');
                 updateStatus('AI Thinking...');
                 currentResponseAudioBuffer.current = []; // Clear buffer for new response
+                setLastRawAudioBuffer(null); // Clear previous downloadable buffer
                 // Stop any previous playback
                 if (sourceNode.current) {
-                    try { sourceNode.current.stop(); } catch(e) {/* ignore */}
-                    try { sourceNode.current.disconnect(); } catch(e) {/* ignore */}
+                    try { sourceNode.current.stop(); } catch(e) {}
+                    try { sourceNode.current.disconnect(); } catch(e) {}
                     sourceNode.current = null;
-                    setIsAISpeaking(false);
+                    setIsAISpeaking(false); // Ensure state is reset
                 }
                 break;
              case 'AISpeechDetected': updateStatus('Hearing you...'); break;
@@ -263,24 +297,33 @@ function App() {
                      try {
                         const totalLength = currentResponseAudioBuffer.current.reduce((sum, buffer) => sum + buffer.byteLength, 0);
                         console.log(`Concatenating ${currentResponseAudioBuffer.current.length} audio chunks, total size: ${totalLength} bytes`);
-                        const concatenatedBuffer = new ArrayBuffer(totalLength);
-                        const concatenatedView = new Uint8Array(concatenatedBuffer);
+                        const concatenatedPcmBuffer = new ArrayBuffer(totalLength); // Keep raw PCM buffer separate
+                        const concatenatedView = new Uint8Array(concatenatedPcmBuffer);
                         let offset = 0;
                         for (const chunk of currentResponseAudioBuffer.current) {
                             concatenatedView.set(new Uint8Array(chunk), offset);
                             offset += chunk.byteLength;
                         }
+                        const bufferToSave = concatenatedPcmBuffer.slice(0); // Create a copy for state/download
                         currentResponseAudioBuffer.current = []; // Clear buffer
-                        playConcatenatedAudio(concatenatedBuffer); // Play the full audio
+
+                        // --- STORE RAW BUFFER FOR DOWNLOAD ---
+                        setLastRawAudioBuffer(bufferToSave); // Make it available for download button
+
+                        // --- PLAY CONCATENATED AUDIO (with WAV header) ---
+                        playConcatenatedAudio(bufferToSave); // Pass raw PCM copy to playback func
+
                      } catch (concatError) {
                           console.error("Error concatenating audio buffers:", concatError);
                           updateStatus("Error preparing audio");
                            currentResponseAudioBuffer.current = []; // Clear buffer on error
+                           setLastRawAudioBuffer(null); // Clear on error too
                      }
                 } else {
                      console.log("AIResponseEnd received, but no audio chunks were buffered.");
                      if (isAISpeaking) { setIsAISpeaking(false); } // Ensure state reset
                      updateStatus(isAIReady ? 'AI Ready' : 'Connecting...'); // Reset status
+                     setLastRawAudioBuffer(null); // Clear if no audio
                 }
                 break;
             default: console.log(`Unhandled server event: ${eventName}`);
@@ -310,7 +353,7 @@ function App() {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
             const sourceNodeMic = audioContext.current.createMediaStreamSource(stream);
-            // Check if ScriptProcessorNode is available, provide fallback or warning
+            // Check if ScriptProcessorNode is available
             if (!audioContext.current.createScriptProcessor) {
                  alert("ScriptProcessorNode is not supported in this browser. AudioWorklet implementation needed.");
                  throw new Error("ScriptProcessorNode not supported");
@@ -328,7 +371,6 @@ function App() {
                     if (ws.current?.readyState === WebSocket.OPEN) {
                         ws.current.send(pcm16Data.buffer);
                     } else {
-                         // Maybe stop recording if WS closes mid-stream?
                          console.warn(`WS closed during recording. Stopping. State=${ws.current?.readyState}`);
                          stopRecording(); // Auto-stop if WS disconnects
                     }
@@ -352,7 +394,7 @@ function App() {
 
     // --- Stop Recording ---
     const stopRecording = () => {
-        if (!isRecordingRef.current) { // Check ref first
+        if (!isRecordingRef.current) {
             console.log("Stop called but not recording.");
             return;
         }
@@ -367,7 +409,6 @@ function App() {
         }
 
         try {
-            // Use the specific ref for audio nodes
             if (audioProcessingNodes.current?.processorNode) {
                 console.log("Disconnecting proc...");
                 audioProcessingNodes.current.processorNode.onaudioprocess = null; // Remove listener
@@ -406,6 +447,17 @@ function App() {
                     <button onClick={stopRecording} className="stop-button">Stop Talking</button>
                 )}
             </div>
+
+            {/* --- ADD DOWNLOAD BUTTON --- */}
+            {lastRawAudioBuffer && !isAISpeaking && (
+                 <div className="controls download-controls"> {/* Added class for styling */}
+                    <button onClick={() => downloadData(lastRawAudioBuffer, `response_${Date.now()}.raw`)}>
+                         Download Last Response (Raw PCM)
+                    </button>
+                 </div>
+            )}
+            {/* --- END DOWNLOAD BUTTON --- */}
+
             <div className="transcript-container">
                 <h2>Conversation</h2>
                 <pre className="transcript">{transcript}</pre>

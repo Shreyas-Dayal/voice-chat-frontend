@@ -1,4 +1,3 @@
-// components/MessagesList.tsx
 import React, { useEffect, useRef } from 'react';
 import { Avatar, Typography } from 'antd';
 
@@ -7,29 +6,30 @@ interface Props {
   isMicMinimized: boolean;
 }
 
-const bubbleStyles = {
-  user: {
-    background: '#1890ff',
-    color: '#fff',
-    alignSelf: 'flex-end',
-  },
-  ai: {
-    background: '#f0f0f0',
-    color: '#000',
-    alignSelf: 'flex-start',
-  },
-  system: {
-    background: '#e6f7ff',
-    color: '#333',
-    alignSelf: 'center',
-  },
-};
-
 export const MessagesList: React.FC<Props> = ({ messages }) => {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Dynamically adjusting bubble styles for light and dark mode
+  const bubbleStyles = {
+    user: {
+      background: 'var(--ant-color-primary)', // user message: primary color
+      color: 'var(--ant-color-white)',        // white text for user
+      alignSelf: 'flex-end',
+    },
+    ai: {
+      background: 'var(--ant-color-bg-container)', // ai message: background for containers
+      color: 'var(--ant-color-text)',              // text color for AI
+      alignSelf: 'flex-start',
+    },
+    system: {
+      background: 'var(--ant-color-bg-container)', // system message: container background
+      color: 'var(--ant-color-text-secondary)',    // secondary text color for system
+      alignSelf: 'center',
+    },
+  };
 
   return (
     <div
@@ -52,7 +52,7 @@ export const MessagesList: React.FC<Props> = ({ messages }) => {
               flexDirection: isUser ? 'row-reverse' : 'row',
             }}
           >
-            <Avatar style={{ background: isUser ? '#096dd9' : '#bbb' }}>
+            <Avatar style={{ background: isUser ? 'var(--ant-color-primary)' : '#bbb' }}>
               {isUser ? 'You' : 'AI'}
             </Avatar>
             <div

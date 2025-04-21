@@ -22,39 +22,37 @@ interface Props {
   isMicMinimized: boolean; // Keep prop if needed for other logic, though toggle is removed
   // toggleMicMinimize: () => void; // Removed Prop
   error: string | null;
+  isMobile: boolean; 
 }
 
-interface ControlBarStyles {
-    container: CSSProperties;
-    centerContent: CSSProperties; // New style for centering
-    micButton: CSSProperties;
-    statusBadge: CSSProperties;
-    // toggleButton: CSSProperties; // Removed Style
-    // rightSpacer: CSSProperties; // Removed Style
-}
+// interface ControlBarStyles {
+//     container: CSSProperties;
+//     centerContent: CSSProperties; // New style for centering
+//     micButton: CSSProperties;
+//     statusBadge: CSSProperties;
+//     // toggleButton: CSSProperties; // Removed Style
+//     // rightSpacer: CSSProperties; // Removed Style
+// }
 
-const styles: ControlBarStyles = {
+// Base styles
+const baseStyles = {
     container: {
         width: '100%',
-        justifyContent: 'center', // Center the main content now
-        padding: '0 20px',
+        padding: '0 10px', // Reduced padding for mobile baseline
         boxSizing: 'border-box',
-    },
-    centerContent: {
-        // This Space component will contain the button and status
-    },
+        justifyContent: 'center',
+    } as CSSProperties,
+    centerContent: {} as CSSProperties,
     micButton: {
-         // margin: '0 10px' // Example spacing if needed
-    },
-    statusBadge: {
+         // No specific base style needed now
+    } as CSSProperties,
+    statusBadgeText: { // Style the text inside the badge
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
-        maxWidth: '180px', // Adjust max width as needed
-        marginLeft: '8px', // Add space between button and badge
-    },
-    // toggleButton style removed
-    // rightSpacer style removed
+        marginLeft: '8px',
+        verticalAlign: 'middle', // Align text nicely with badge dot
+    } as CSSProperties,
 };
 
 export const ControlBar: React.FC<Props> = ({
@@ -65,6 +63,7 @@ export const ControlBar: React.FC<Props> = ({
   isAISpeaking,
   statusMessage,
   onMicClick,
+  isMobile,
   // isMicMinimized, // Keep if needed elsewhere
   // toggleMicMinimize, // Removed Prop
   error,
@@ -96,30 +95,46 @@ export const ControlBar: React.FC<Props> = ({
    }
   // --- End logic ---
 
+  // --- Responsive Styles ---
+  const dynamicStyles = {
+        statusBadgeText: {
+            ...baseStyles.statusBadgeText,
+            maxWidth: isMobile ? '100px' : '180px', // Shorter text area on mobile
+            display: isMobile ? 'none' : 'inline-block', // Hide text on mobile
+        },
+        // micButtonSize: isMobile ? 'default' : 'large', // Smaller button on mobile
+        micButtonSize: isMobile ? 'middle' : 'large', // Smaller button on mobile
+        progressSize: isMobile ? 16 : 20, // Smaller progress on mobile
+  };
+
   return (
-    // Single Space component centered
-    <Space style={styles.container} align="center">
-        {/* Removed Left Toggle Button */}
-
+    // Use wrap on the outer Space for responsiveness
+    <Space style={baseStyles.container} align="center" wrap={isMobile}>
         {/* Center Content: Mic Button and Status */}
-        <Space align="center" style={styles.centerContent}>
+        {/* Use another Space for items that should stay together */}
+        <Space align="center" style={baseStyles.centerContent}>
             <Tooltip title={micTooltip}>
-                <Button
-                style={styles.micButton}
-                type={isRecording ? 'primary' : 'default'}
-                danger={isRecording}
-                disabled={buttonDisabled}
-                shape="circle"
-                size="large"
-                icon={micIcon}
-                onClick={onMicClick}
-                />
+              <Button
+              style={baseStyles.micButton}
+              type={isRecording ? 'primary' : 'default'}
+              danger={isRecording}
+              disabled={buttonDisabled}
+              shape="circle"
+              size={dynamicStyles.micButtonSize as 'small' | 'middle' | 'large' | undefined} 
+              icon={micIcon}
+              onClick={onMicClick}
+              />
             </Tooltip>
-            <Badge status={badgeStatus} text={<span style={styles.statusBadge}>{displayText}</span>} />
-            {showProgress && <Progress type="circle" percent={100} size={20} format={() => ''} status="active" />}
-        </Space>
+            {/* Badge: Conditionally render text span based on mobile */}
+            <Badge
+                status={badgeStatus}
+                text={!isMobile ? <span style={dynamicStyles.statusBadgeText}>{displayText}</span> : null} // Hide text on mobile
+            />
+            {/* Tooltip for Badge text on mobile */}
+            {isMobile && <Tooltip title={displayText}><span style={{marginLeft: '4px'}}>({badgeStatus === 'success' ? '✓' : badgeStatus === 'processing' ? '...' : '!'})</span></Tooltip> }
 
-        {/* Removed Right Spacer */}
+            {showProgress && <Progress type="circle" percent={100} size={dynamicStyles.progressSize} format={() => ''} status="active" />}
+        </Space>
     </Space>
   );
 };

@@ -1,7 +1,7 @@
 // src/App.tsx
 import React, { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
-import 'antd/dist/reset.css';
-import { Layout, Typography, ConfigProvider, App as AntApp, Tooltip, Button } from 'antd'; // Import AntApp and ConfigProvider
+// import 'antd/dist/reset.css';
+import { Layout, Typography, ConfigProvider, App as AntApp, Tooltip, Button, Space, theme } from 'antd'; // Import AntApp and ConfigProvider
 
 // Hooks - Assuming these are correctly implemented as discussed previously
 import useAudioContext from './hooks/useAudioContext'; // Assuming this provides the ensure function
@@ -19,59 +19,36 @@ import { DownloadButton } from './components/DownloadButton'; // Assuming Downlo
 // Constants
 import { BACKEND_WS_URL, TARGET_SAMPLE_RATE } from './constants';
 import { Content, Footer, Header } from 'antd/es/layout/layout';
-import { DownCircleOutlined, UpCircleOutlined } from '@ant-design/icons';
+import { DownCircleOutlined, MoonOutlined, SunOutlined, UpCircleOutlined } from '@ant-design/icons';
+import useMediaQuery from './hooks/useMediaQuery';
 
-// Define Layout styles inline
-const layoutStyle: CSSProperties = {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
+// --- Styles (Keep existing styles) ---
+const layoutStyle: CSSProperties = { /* ... */
+    minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--ant-color-bg-layout)', color:'var(--ant-text-color)',
 };
-const headerStyle: CSSProperties = {
-    background: '#fff', // Changed to white for contrast with dark text
-    borderBottom: '1px solid #f0f0f0',
-    padding: '0 20px',
-    flexShrink: 0, // Prevent header from shrinking
-    display: 'flex',
-    alignItems: 'center',
+const headerStyleBase: CSSProperties = { /* ... */
+    borderBottom: '1px solid var(--ant-border-color-split)', padding: '0 16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--ant-layout-header-background)',
 };
-const headerTitleStyle: CSSProperties = {
-     color: '#333', // Darker text for white background
-     margin: 0, // Remove default margin
-     lineHeight: '64px', // Align vertically
+const headerTitleStyle: CSSProperties = { /* ... */
+     margin: 0, lineHeight: '64px', whiteSpace: 'nowrap', color: 'var(--ant-color-text)', // Explicitly use theme text color
 };
-const contentStyle: CSSProperties = {
-    flexGrow: 1,
-    overflow: 'hidden', // Important for controlling scroll behavior
-    display: 'flex',
-    flexDirection: 'column', // Children stack vertically
-    position: 'relative', // Needed for absolute positioning of DownloadButton
-    justifyContent:'center'
+const contentStyle: CSSProperties = { /* ... */
+    flexGrow: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative', justifyContent: 'center',
 };
-const messagesListContainerStyle: CSSProperties = {
-     flexGrow: 1,
-     overflowY: 'auto', // Allow scrolling for messages
-     padding: '1rem',
-     background: '#f7f7f7', // Light background for chat area
+const messagesListContainerStyle: CSSProperties = { /* ... */
+     flexGrow: 1, overflowY: 'auto', padding: '1rem', backgroundColor: 'var(--ant-color-bg-container)', // Use theme container bg
 };
-const footerStyle: CSSProperties = {
-    padding: '10px 0', // Reduce vertical padding
-    background: '#fff',
-    borderTop: '1px solid #f0f0f0',
-    flexShrink: 0, // Prevent footer from shrinking
+const footerStyle: CSSProperties = { /* ... */
+    padding: '10px 0', background: 'var(--ant-layout-footer-background)', borderTop: '1px solid var(--ant-border-color-split)', flexShrink: 0,
 };
-const downloadButtonContainerStyle: CSSProperties = {
-    position: 'absolute',
-    bottom: '90px', // Position above the minimize button in MaximizedView
-    right: '25px',
-    zIndex: 10,
+const downloadButtonContainerStyle: CSSProperties = { /* ... */
+    position: 'absolute', bottom: '25px', right: '25px', zIndex: 10,
 };
-const headerButtonStyle: CSSProperties = {
-    fontSize: '22px', // Slightly smaller icon in header
-    color: '#888', // Match secondary text color perhaps
-    marginLeft: 'auto', // Push to the right
-    marginRight:'1rem'
+const headerIconButtonStyle: CSSProperties = { /* ... */
+    fontSize: '20px', color: 'var(--ant-text-color-secondary)', cursor: 'pointer',
 };
+// --- End Styles ---
+
 
 
 const App: React.FC = () => {
@@ -88,6 +65,43 @@ const App: React.FC = () => {
   const ensureAudioContext = useAudioContext();
   // Ref to hold the actual AudioContext instance once created/resumed
   const audioContextInstance = useRef<AudioContext | null>(null);
+    
+  // ─── Theme and State Setup ───────────────────────────────────
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
+
+  const toggleTheme = useCallback(() => {
+    setThemeMode((prevMode) => {
+      const newMode = prevMode === 'light' ? 'dark' : 'light';
+      localStorage.setItem('themeMode', newMode); // Save user preference
+      return newMode;
+    });
+  }, []);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('themeMode') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setThemeMode(savedTheme);
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setThemeMode(prefersDark ? 'dark' : 'light');
+    }
+  }, []);
+
+  // ─── Mobile Detection ────────────────────────────────────────
+  const isMobile = useMediaQuery('(max-width: 767px)'); // Use your custom hook for responsiveness
+
+  // ─── Theme Setup ────────────────────────────────────────────
+  const themeSettings = {
+    algorithm: themeMode === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    cssVar: true, 
+    hashed: false,  // optional: for easier debugging
+    // components: {
+    // //   Button: {
+    // //     borderRadius: 8,
+    // //   },
+    //   // You can add custom component-specific theme overrides if needed
+    // },
+  };
 
   // ─── WebSocket Hook ────────────────────────────────────
   const {
@@ -324,55 +338,61 @@ const App: React.FC = () => {
   // ─── Render ────────────────────────────────────────────
   return (
     // Wrap with AntD providers for theme and context (like message API)
-    <ConfigProvider theme={{ /* Customize AntD theme if needed */ }}>
-        <AntApp>
+    <ConfigProvider theme={themeSettings}>
+        <AntApp> {/* Provides context for message.success/error etc. */}
             <Layout style={layoutStyle}>
-                {/* Header now contains the toggle button */}
-                <Header style={headerStyle}>
+                <Header style={headerStyleBase} > {/* Use base style */}
                     <Typography.Title level={4} style={headerTitleStyle}>
                         VoiceChat AI
                     </Typography.Title>
+                    {/* Use Space for multiple header icons */}
+                    <Space style={{ marginLeft: 'auto' }}>
+                        <Tooltip title={`Switch to ${themeMode === 'light' ? 'Dark' : 'Light'} Mode`}>
+                             <Button
+                                 type="text"
+                                 shape="circle"
+                                 icon={themeMode === 'light' ? <MoonOutlined /> : <SunOutlined />}
+                                 style={headerIconButtonStyle}
+                                 onClick={toggleTheme}
+                             />
+                         </Tooltip>
+                        <Tooltip title={isMicMinimized ? "Maximize View" : "Minimize to Chat View"}>
+                            <Button
+                                type="text"
+                                shape="circle"
+                                icon={isMicMinimized ? <UpCircleOutlined /> : <DownCircleOutlined />}
+                                style={headerIconButtonStyle}
+                                onClick={toggleMicMinimize}
+                                disabled={isConnecting}
+                            />
+                        </Tooltip>
+                    </Space>
                 </Header>
 
-                {/* Content area switches layout based on isMicMinimized */}
-                {/* Moved Toggle Button Here */}
-                <Tooltip title={isMicMinimized ? "Maximize View" : "Minimize to Chat"}>
-                    <Button
-                        type="text" // Use text button for subtle appearance
-                        icon={isMicMinimized ? <UpCircleOutlined /> : <DownCircleOutlined />}
-                        style={headerButtonStyle}
-                        onClick={toggleMicMinimize}
-                        disabled={isConnecting} // Maybe disable during connection?
-                    />
-                </Tooltip>
                 <Content style={contentStyle}>
                     {!isMicMinimized ? (
-                        // Maximized View (Large Mic)
                         <MaximizedView
                             isRecording={isRecording}
                             isConnecting={isConnecting}
                             isConnected={isConnected}
                             isAIReady={isAIReady}
                             isAISpeaking={isAISpeaking}
-                            statusMessage={statusMessage} // Pass status for context
+                            statusMessage={statusMessage}
                             onMicClick={handleMicClick}
-                            // toggleMicMinimize={toggleMicMinimize}
-                            error={lastError} // Pass consolidated error
+                            error={lastError}
+                            isMobile={isMobile} // Pass mobile flag
                         />
                     ) : (
-                        // Minimized View (Chat + Control Bar)
                         <>
-                            {/* Container for scrollable messages */}
                             <div style={messagesListContainerStyle}>
-                                <MessagesList messages={messages} isMicMinimized={isMicMinimized} />
-                                {/* Optionally display live AI utterance transcription here */}
+                                {/* Pass isMobile to MessagesList if it needs adjustments */}
+                                <MessagesList messages={messages} isMicMinimized={isMicMinimized} /* isMobile={isMobile} */ />
                                 {currentUtterance && !isAISpeaking && (
-                                    <Typography.Text italic style={{ padding: '0 1rem', color: '#888', display: 'block' }}>
+                                    <Typography.Text italic style={{ padding: '0 1rem', color: 'var(--ant-text-color-secondary)', display: 'block' }}>
                                         AI: {currentUtterance}...
                                     </Typography.Text>
                                 )}
                             </div>
-                            {/* Footer sticks to bottom */}
                             <Footer style={footerStyle}>
                                 <ControlBar
                                     isRecording={isRecording}
@@ -383,17 +403,16 @@ const App: React.FC = () => {
                                     statusMessage={statusMessage}
                                     onMicClick={handleMicClick}
                                     isMicMinimized={isMicMinimized}
-                                    // toggleMicMinimize={toggleMicMinimize}
                                     error={lastError}
+                                    isMobile={isMobile} // Pass mobile flag
                                 />
                             </Footer>
                         </>
                     )}
-                     {/* Download Button positioned absolutely in Maximized view */}
-                     {/* Only show when not minimized, AI not speaking, and buffer exists */}
                     {!isMicMinimized && !isAISpeaking && lastRawAudioBuffer && (
                         <div style={downloadButtonContainerStyle}>
-                            <DownloadButton lastRawAudioBuffer={lastRawAudioBuffer} isPlaying={isAISpeaking} />
+                             {/* Pass isMobile if download button needs style changes */}
+                            <DownloadButton lastRawAudioBuffer={lastRawAudioBuffer} isPlaying={isAISpeaking} /* isMobile={isMobile} */ />
                         </div>
                     )}
                 </Content>

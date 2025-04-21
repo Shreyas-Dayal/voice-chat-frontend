@@ -19,21 +19,24 @@ interface MaximizedViewProps {
   onMicClick: () => void;
   // toggleMicMinimize: () => void; // Removed Prop
   error: string | null;
+  isMobile: boolean; // Added Prop
 }
 
-interface Styles {
-  container: CSSProperties;
-  micButtonBase: CSSProperties;
-  micButtonRecording: CSSProperties;
-  primaryText: CSSProperties;
-  secondaryText: CSSProperties;
-  // minimizeButton: CSSProperties; // Removed Style
-  // minimizeButtonIcon: CSSProperties; // Removed Style
-  liveTranscriptPlaceholder: CSSProperties;
-  aiSpeakingIconSpin: CSSProperties;
-}
+// interface Styles {
+//   container: CSSProperties;
+//   micButtonBase: CSSProperties;
+//   micButtonRecording: CSSProperties;
+//   primaryText: CSSProperties;
+//   secondaryText: CSSProperties;
+//   // minimizeButton: CSSProperties; // Removed Style
+//   // minimizeButtonIcon: CSSProperties; // Removed Style
+//   liveTranscriptPlaceholder: CSSProperties;
+//   aiSpeakingIconSpin: CSSProperties;
+//   isMobile: boolean; 
+// }
 
-const styles: Styles = {
+// Define base styles that don't change with mobile/theme
+const baseStyles = {
   container: {
     display: 'flex',
     flexDirection: 'column',
@@ -41,39 +44,37 @@ const styles: Styles = {
     alignItems: 'center',
     height: '100%',
     textAlign: 'center',
-    padding: '20px',
-    position: 'relative', // Keep relative if needed for other absolute elements inside
-    // backgroundColor: '#fdfdfd', // Optional background
-  },
+    padding: '15px', // Reduced padding slightly
+    position: 'relative',
+  } as CSSProperties,
   micButtonBase: {
-    width: '160px',
-    height: '160px',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-    transition: 'box-shadow 0.3s ease-in-out, background-color 0.3s ease-in-out, border-color 0.3s ease-in-out',
-  },
+    transition: 'box-shadow 0.3s ease-in-out, background-color 0.3s ease-in-out, border-color 0.3s ease-in-out, width 0.3s ease, height 0.3s ease', // Added width/height transition
+  } as CSSProperties,
   micButtonRecording: {
     boxShadow: '0 6px 16px rgba(255, 82, 82, 0.3)',
-  },
+  } as CSSProperties,
   primaryText: {
-    marginTop: '30px',
-    marginBottom: '10px',
+    marginTop: '25px', // Adjusted margin
+    marginBottom: '8px', // Adjusted margin
     fontWeight: 500,
-  },
+    transition: 'font-size 0.3s ease',
+  } as CSSProperties,
   secondaryText: {
-    color: '#888',
-  },
-  // minimizeButton style removed
-  // minimizeButtonIcon style removed
+    color: 'var(--ant-text-color-secondary)', // Use theme variable
+    transition: 'font-size 0.3s ease',
+    minHeight: '1.2em', // Prevent layout shift when text changes
+  } as CSSProperties,
   liveTranscriptPlaceholder: {
-    marginTop: '20px',
-    minHeight: '2em',
-    color: '#777',
+    marginTop: '15px',
+    minHeight: '1.5em',
+    color: 'var(--ant-text-color-secondary)', // Use theme variable
     fontStyle: 'italic',
-  },
-  aiSpeakingIconSpin: {},
+  } as CSSProperties,
+  aiSpeakingIconSpin: {} as CSSProperties,
 };
 
 const pulseKeyframes = `
@@ -88,7 +89,7 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
   isAIReady,
   isAISpeaking,
   onMicClick,
-  // toggleMicMinimize, // Removed Prop
+  isMobile,
   error,
 }) => {
   // --- Logic to determine icon, text, state (keep as is) ---
@@ -101,7 +102,7 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
   let showSpinAroundIcon = false;
   let buttonDisabled = false;
   let tooltipTitle = 'Start Recording';
-  const micIconStyle: CSSProperties = { fontSize: '64px' };
+//   const micIconStyle: CSSProperties = { fontSize: '64px' };
 
   if (isConnecting) { /* ... state logic ... */
     icon = <LoadingOutlined />; primaryText = 'Connecting...'; secondaryText = 'Please wait.'; buttonDisabled = true; tooltipTitle = 'Connecting...';
@@ -118,31 +119,51 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
   }
   // --- End logic ---
 
-  const micButtonStyle = {
-    ...styles.micButtonBase,
-    ...(isRecording ? styles.micButtonRecording : {}),
+//   const micButtonStyle = {
+//     ...styles.micButtonBase,
+//     ...(isRecording ? styles.micButtonRecording : {}),
+//   };
+
+  // --- Responsive Styles ---
+  const dynamicStyles = {
+      micButton: {
+          ...baseStyles.micButtonBase,
+          width: isMobile ? '120px' : '160px', // Smaller button on mobile
+          height: isMobile ? '120px' : '160px',
+          ...(isRecording ? baseStyles.micButtonRecording : {}),
+      },
+      micIcon: {
+          fontSize: isMobile ? '48px' : '64px', // Smaller icon on mobile
+      },
+      primaryText: {
+          ...baseStyles.primaryText,
+          fontSize: isMobile ? '1.1rem' : '1.5rem', // Smaller text on mobile (adjust as needed)
+      },
+      secondaryText: {
+          ...baseStyles.secondaryText,
+          fontSize: isMobile ? '0.85rem' : '1rem', // Smaller text on mobile
+      }
   };
+  // --- End Responsive Styles ---
 
   return (
-    <div style={styles.container}>
+    <div style={baseStyles.container}>
       <style>{pulseKeyframes}</style>
 
       <Tooltip title={tooltipTitle}>
         <Button
           className={showPulseClass ? 'mic-button-pulsing' : ''}
-          style={micButtonStyle}
+          style={dynamicStyles.micButton} // Apply dynamic button style
           type={buttonType}
           danger={buttonDanger}
           disabled={buttonDisabled}
           shape="circle"
           icon={
             showSpinAroundIcon ? (
-              // Use LoadingOutlined within Spin for consistency
-              <Spin size="large" indicator={<LoadingOutlined style={micIconStyle} spin />} style={styles.aiSpeakingIconSpin} />
+              <Spin size="large" indicator={<LoadingOutlined style={dynamicStyles.micIcon} spin />} style={baseStyles.aiSpeakingIconSpin} />
             ) : (
-               // Ensure icon is typed correctly for cloneElement
               React.cloneElement(icon as React.ReactElement<{ style?: CSSProperties }>, {
-                style: micIconStyle,
+                style: dynamicStyles.micIcon, // Apply dynamic icon style
               })
             )
           }
@@ -150,15 +171,13 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
         />
       </Tooltip>
 
-      <Typography.Title level={3} style={styles.primaryText}>
+      <Typography.Title level={isMobile ? 4 : 3} style={dynamicStyles.primaryText}> {/* Adjust heading level too */}
         {primaryText}
       </Typography.Title>
-      <Typography.Text style={styles.secondaryText}>{secondaryText}</Typography.Text>
-
-      {/* Minimize Button Removed */}
+      <Typography.Text style={dynamicStyles.secondaryText}>{secondaryText}</Typography.Text>
 
       {isRecording && (
-        <div style={styles.liveTranscriptPlaceholder}>
+        <div style={baseStyles.liveTranscriptPlaceholder}>
           <Typography.Text>(Listening...)</Typography.Text>
         </div>
       )}

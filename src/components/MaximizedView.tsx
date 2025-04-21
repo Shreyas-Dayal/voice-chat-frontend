@@ -6,7 +6,7 @@ import {
   SoundOutlined,
   LoadingOutlined,
   ApiOutlined,
-  DownCircleOutlined,
+  // DownCircleOutlined, // Removed
 } from '@ant-design/icons';
 
 interface MaximizedViewProps {
@@ -17,7 +17,7 @@ interface MaximizedViewProps {
   isAISpeaking: boolean;
   statusMessage: string | null;
   onMicClick: () => void;
-  toggleMicMinimize: () => void;
+  // toggleMicMinimize: () => void; // Removed Prop
   error: string | null;
 }
 
@@ -27,8 +27,8 @@ interface Styles {
   micButtonRecording: CSSProperties;
   primaryText: CSSProperties;
   secondaryText: CSSProperties;
-  minimizeButton: CSSProperties;
-  minimizeButtonIcon: CSSProperties;
+  // minimizeButton: CSSProperties; // Removed Style
+  // minimizeButtonIcon: CSSProperties; // Removed Style
   liveTranscriptPlaceholder: CSSProperties;
   aiSpeakingIconSpin: CSSProperties;
 }
@@ -42,8 +42,8 @@ const styles: Styles = {
     height: '100%',
     textAlign: 'center',
     padding: '20px',
-    position: 'relative',
-    backgroundColor: '#fdfdfd',
+    position: 'relative', // Keep relative if needed for other absolute elements inside
+    // backgroundColor: '#fdfdfd', // Optional background
   },
   micButtonBase: {
     width: '160px',
@@ -65,15 +65,8 @@ const styles: Styles = {
   secondaryText: {
     color: '#888',
   },
-  minimizeButton: {
-    position: 'absolute',
-    bottom: '25px',
-    right: '25px',
-    color: '#aaa',
-  },
-  minimizeButtonIcon: {
-    fontSize: '24px',
-  },
+  // minimizeButton style removed
+  // minimizeButtonIcon style removed
   liveTranscriptPlaceholder: {
     marginTop: '20px',
     minHeight: '2em',
@@ -84,21 +77,8 @@ const styles: Styles = {
 };
 
 const pulseKeyframes = `
-  @keyframes pulse {
-    0% {
-      box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.7);
-    }
-    70% {
-      box-shadow: 0 0 0 20px rgba(255, 82, 82, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(255, 82, 82, 0);
-    }
-  }
-
-  .mic-button-pulsing {
-    animation: pulse 1.8s infinite;
-  }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(255, 82, 82, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); } }
+  .mic-button-pulsing { animation: pulse 1.8s infinite; }
 `;
 
 export const MaximizedView: React.FC<MaximizedViewProps> = ({
@@ -108,13 +88,13 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
   isAIReady,
   isAISpeaking,
   onMicClick,
-  toggleMicMinimize,
+  // toggleMicMinimize, // Removed Prop
   error,
 }) => {
+  // --- Logic to determine icon, text, state (keep as is) ---
   let icon: React.ReactNode = <AudioOutlined />;
   let primaryText: string = 'Tap the microphone to start speaking';
-  let secondaryText: string | React.ReactNode =
-    'Tap the minimize button below to view conversation history';
+  let secondaryText: string | React.ReactNode = 'Ready'; // Default secondary text
   let buttonType: 'primary' | 'default' = 'default';
   let buttonDanger = false;
   let showPulseClass = false;
@@ -123,46 +103,20 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
   let tooltipTitle = 'Start Recording';
   const micIconStyle: CSSProperties = { fontSize: '64px' };
 
-  if (isConnecting) {
-    icon = <LoadingOutlined />;
-    primaryText = 'Connecting to backend...';
-    secondaryText = 'Please wait.';
-    buttonDisabled = true;
-    tooltipTitle = 'Connecting...';
-  } else if (error || !isConnected) {
-    icon = <ApiOutlined style={{ color: 'red' }} />;
-    primaryText = 'Connection Error';
-    secondaryText = error || 'Could not connect. Please check the backend or refresh.';
-    buttonDisabled = true;
-    tooltipTitle = 'Connection Error';
-  } else if (isRecording) {
-    icon = <AudioOutlined />;
-    primaryText = 'Listening...';
-    secondaryText = 'Tap the microphone to stop';
-    buttonType = 'primary';
-    buttonDanger = true;
-    showPulseClass = true;
-    tooltipTitle = 'Stop Recording';
-  } else if (isAISpeaking) {
-    icon = <SoundOutlined />;
-    primaryText = 'AI is speaking...';
-    secondaryText = '\u00A0';
-    showSpinAroundIcon = true;
-    buttonDisabled = true;
-    tooltipTitle = 'AI Speaking';
-  } else if (!isAIReady) {
-    icon = <LoadingOutlined />;
-    primaryText = 'Waiting for AI service...';
-    secondaryText = 'The connection is established, but the AI is not ready yet.';
-    buttonDisabled = true;
-    tooltipTitle = 'AI Not Ready';
-  } else {
-    icon = <AudioOutlined />;
-    primaryText = 'Tap the microphone to start speaking';
-    secondaryText = 'Tap the minimize button below to view conversation history';
-    buttonDisabled = false;
-    tooltipTitle = 'Start Recording';
+  if (isConnecting) { /* ... state logic ... */
+    icon = <LoadingOutlined />; primaryText = 'Connecting...'; secondaryText = 'Please wait.'; buttonDisabled = true; tooltipTitle = 'Connecting...';
+  } else if (error || !isConnected) { /* ... state logic ... */
+    icon = <ApiOutlined style={{ color: 'red' }} />; primaryText = 'Connection Error'; secondaryText = error || 'Could not connect.'; buttonDisabled = true; tooltipTitle = 'Connection Error';
+  } else if (isRecording) { /* ... state logic ... */
+    icon = <AudioOutlined />; primaryText = 'Listening...'; secondaryText = 'Tap microphone to stop'; buttonType = 'primary'; buttonDanger = true; showPulseClass = true; tooltipTitle = 'Stop Recording';
+  } else if (isAISpeaking) { /* ... state logic ... */
+    icon = <SoundOutlined />; primaryText = 'AI is speaking...'; secondaryText = '\u00A0'; showSpinAroundIcon = true; buttonDisabled = true; tooltipTitle = 'AI Speaking';
+  } else if (!isAIReady) { /* ... state logic ... */
+    icon = <LoadingOutlined />; primaryText = 'Waiting for AI service...'; secondaryText = 'Connected, AI initializing.'; buttonDisabled = true; tooltipTitle = 'AI Not Ready';
+  } else { /* ... state logic ... */
+    icon = <AudioOutlined />; primaryText = 'Tap microphone to start speaking'; secondaryText = 'Ready'; buttonDisabled = false; tooltipTitle = 'Start Recording';
   }
+  // --- End logic ---
 
   const micButtonStyle = {
     ...styles.micButtonBase,
@@ -183,8 +137,10 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
           shape="circle"
           icon={
             showSpinAroundIcon ? (
-              <Spin size="large" indicator={<LoadingOutlined style={micIconStyle} />} style={styles.aiSpeakingIconSpin} />
+              // Use LoadingOutlined within Spin for consistency
+              <Spin size="large" indicator={<LoadingOutlined style={micIconStyle} spin />} style={styles.aiSpeakingIconSpin} />
             ) : (
+               // Ensure icon is typed correctly for cloneElement
               React.cloneElement(icon as React.ReactElement<{ style?: CSSProperties }>, {
                 style: micIconStyle,
               })
@@ -199,15 +155,7 @@ export const MaximizedView: React.FC<MaximizedViewProps> = ({
       </Typography.Title>
       <Typography.Text style={styles.secondaryText}>{secondaryText}</Typography.Text>
 
-      <Tooltip title="View Conversation History">
-        <Button
-          style={styles.minimizeButton}
-          type="text"
-          icon={<DownCircleOutlined style={styles.minimizeButtonIcon} />}
-          onClick={toggleMicMinimize}
-          disabled={isConnecting || !isConnected}
-        />
-      </Tooltip>
+      {/* Minimize Button Removed */}
 
       {isRecording && (
         <div style={styles.liveTranscriptPlaceholder}>

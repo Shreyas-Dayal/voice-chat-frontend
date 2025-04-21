@@ -1,7 +1,7 @@
 // src/App.tsx
 import React, { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
 import 'antd/dist/reset.css';
-import { Layout, Typography, ConfigProvider, App as AntApp } from 'antd'; // Import AntApp and ConfigProvider
+import { Layout, Typography, ConfigProvider, App as AntApp, Tooltip, Button } from 'antd'; // Import AntApp and ConfigProvider
 
 // Hooks - Assuming these are correctly implemented as discussed previously
 import useAudioContext from './hooks/useAudioContext'; // Assuming this provides the ensure function
@@ -19,6 +19,7 @@ import { DownloadButton } from './components/DownloadButton'; // Assuming Downlo
 // Constants
 import { BACKEND_WS_URL, TARGET_SAMPLE_RATE } from './constants';
 import { Content, Footer, Header } from 'antd/es/layout/layout';
+import { DownCircleOutlined, UpCircleOutlined } from '@ant-design/icons';
 
 // Define Layout styles inline
 const layoutStyle: CSSProperties = {
@@ -45,6 +46,7 @@ const contentStyle: CSSProperties = {
     display: 'flex',
     flexDirection: 'column', // Children stack vertically
     position: 'relative', // Needed for absolute positioning of DownloadButton
+    justifyContent:'center'
 };
 const messagesListContainerStyle: CSSProperties = {
      flexGrow: 1,
@@ -63,6 +65,12 @@ const downloadButtonContainerStyle: CSSProperties = {
     bottom: '90px', // Position above the minimize button in MaximizedView
     right: '25px',
     zIndex: 10,
+};
+const headerButtonStyle: CSSProperties = {
+    fontSize: '22px', // Slightly smaller icon in header
+    color: '#888', // Match secondary text color perhaps
+    marginLeft: 'auto', // Push to the right
+    marginRight:'1rem'
 };
 
 
@@ -319,14 +327,24 @@ const App: React.FC = () => {
     <ConfigProvider theme={{ /* Customize AntD theme if needed */ }}>
         <AntApp>
             <Layout style={layoutStyle}>
+                {/* Header now contains the toggle button */}
                 <Header style={headerStyle}>
                     <Typography.Title level={4} style={headerTitleStyle}>
-                    VoiceChat AI
+                        VoiceChat AI
                     </Typography.Title>
-                    {/* Add other header items like settings icon if needed */}
                 </Header>
 
                 {/* Content area switches layout based on isMicMinimized */}
+                {/* Moved Toggle Button Here */}
+                <Tooltip title={isMicMinimized ? "Maximize View" : "Minimize to Chat"}>
+                    <Button
+                        type="text" // Use text button for subtle appearance
+                        icon={isMicMinimized ? <UpCircleOutlined /> : <DownCircleOutlined />}
+                        style={headerButtonStyle}
+                        onClick={toggleMicMinimize}
+                        disabled={isConnecting} // Maybe disable during connection?
+                    />
+                </Tooltip>
                 <Content style={contentStyle}>
                     {!isMicMinimized ? (
                         // Maximized View (Large Mic)
@@ -338,7 +356,7 @@ const App: React.FC = () => {
                             isAISpeaking={isAISpeaking}
                             statusMessage={statusMessage} // Pass status for context
                             onMicClick={handleMicClick}
-                            toggleMicMinimize={toggleMicMinimize}
+                            // toggleMicMinimize={toggleMicMinimize}
                             error={lastError} // Pass consolidated error
                         />
                     ) : (
@@ -365,7 +383,7 @@ const App: React.FC = () => {
                                     statusMessage={statusMessage}
                                     onMicClick={handleMicClick}
                                     isMicMinimized={isMicMinimized}
-                                    toggleMicMinimize={toggleMicMinimize}
+                                    // toggleMicMinimize={toggleMicMinimize}
                                     error={lastError}
                                 />
                             </Footer>

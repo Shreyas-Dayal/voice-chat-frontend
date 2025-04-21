@@ -1,166 +1,180 @@
+// hooks/useWebSocket.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-// Define the type for the hook's return value
-interface UseWebSocketReturn {
-    connect: () => void;
-    disconnect: (code?: number, reason?: string) => void;
-    sendMessage: (data: string | ArrayBuffer | Blob) => void;
-    isConnected: boolean;
-    isConnecting: boolean;
-    error: string | null;
-    setOnMessageHandler: (handler: (event: MessageEvent) => void) => void;
-    setOnOpenHandler: (handler: () => void) => void;
-    setOnCloseHandler: (handler: (event: CloseEvent) => void) => void;
-    setOnErrorHandler: (handler: (event: Event) => void) => void;
-    readyState: number | undefined;
+export interface UseWebSocketReturn {
+  connect: () => void;
+  disconnect: (code?: number, reason?: string) => void;
+  sendMessage: (data: string | ArrayBuffer | Blob) => void;
+  isConnected: boolean;
+  isConnecting: boolean;
+  error: string | null;
+  setOnMessageHandler: (h: (e: MessageEvent) => void) => void;
+  setOnOpenHandler: (h: () => void) => void;
+  setOnCloseHandler: (h: (e: CloseEvent) => void) => void;
+  setOnErrorHandler: (h: (e: Event) => void) => void;
+  readyState: number | undefined;
 }
 
 export function useWebSocket(url: string): UseWebSocketReturn {
-    const [isConnected, setIsConnected] = useState<boolean>(false);
-    const [isConnecting, setIsConnecting] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const ws = useRef<WebSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    // Store handlers in refs with correct types
-    const onMessageHandler = useRef<((event: MessageEvent) => void) | null>(null);
-    const onOpenHandler = useRef<(() => void) | null>(null);
-    const onCloseHandler = useRef<((event: CloseEvent) => void) | null>(null);
-    const onErrorHandler = useRef<((event: Event) => void) | null>(null);
+  const ws = useRef<WebSocket | null>(null);
+  const retryCount = useRef(0);
+  const maxRetries = 5;
+  const baseDelayMs = 1000;
 
-    const connect = useCallback(() => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            console.log('[useWebSocket] Already connected.');
-            return;
-        }
-         if (isConnecting) {
-            console.log('[useWebSocket] Connection attempt already in progress.');
-            return;
-        }
+  // user‑provided handlers
+  const onOpenHandler = useRef<(() => void) | null>(null);
+  const onCloseHandler = useRef<((e: CloseEvent) => void) | null>(null);
+  const onMessageHandler = useRef<((e: MessageEvent) => void) | null>(null);
+  const onErrorHandler = useRef<((e: Event) => void) | null>(null);
 
-        console.log('[useWebSocket] Attempting connection...');
-        setIsConnecting(true);
-        setError(null);
+  // internal connect logic; `manual=true` resets retryCount
+  const doConnect = useCallback(
+    (manual: boolean) => {
+      if (manual) retryCount.current = 0;
 
-        try {
-            ws.current = new WebSocket(url);
-            ws.current.binaryType = "arraybuffer";
+      if (ws.current?.readyState === WebSocket.OPEN) return;
+      if (isConnecting) return;
 
-            ws.current.onopen = () => {
-                console.log('[useWebSocket] Connected.');
-                setIsConnected(true);
-                setIsConnecting(false);
-                setError(null);
-                if (onOpenHandler.current) {
-                    onOpenHandler.current();
-                }
-            };
+      setIsConnecting(true);
+      setError(null);
 
-            ws.current.onclose = (event: CloseEvent) => {
-                console.log('[useWebSocket] Disconnected:', event.code, event.reason);
-                setIsConnected(false);
-                setIsConnecting(false);
-                const currentWs = ws.current; // Capture ref value
-                ws.current = null; // Clear ref
-                if (currentWs) { // Check if close was expected
-                    if (event.code !== 1000 && event.code !== 1001 && event.code !== 1005) { // 1001 = Going Away (unmount), 1005 = No Status Recvd (clean close)
-                        setError(`Disconnected: ${event.reason || `Code ${event.code}`}`);
-                    }
-                }
-                if (onCloseHandler.current) {
-                    onCloseHandler.current(event);
-                }
-            };
+      try {
+        const socket = new WebSocket(url);
+        socket.binaryType = 'arraybuffer';
+        ws.current = socket;
 
-            ws.current.onerror = (event: Event) => {
-                console.error('[useWebSocket] Error:', event);
-                setError('WebSocket connection error.');
-                 if (onErrorHandler.current) {
-                    onErrorHandler.current(event);
-                }
-                // Ensure states are updated after error
-                setIsConnected(false);
-                setIsConnecting(false);
-                // Don't close here, let the browser handle closing after error event
-            };
-
-            ws.current.onmessage = (event: MessageEvent) => {
-                if (onMessageHandler.current) {
-                    onMessageHandler.current(event);
-                } else {
-                    console.warn('[useWebSocket] Received message but no handler set.');
-                }
-            };
-        } catch (connectionError) {
-             console.error('[useWebSocket] Connection initialization error:', connectionError);
-             setError(`Failed to initialize connection: ${connectionError instanceof Error ? connectionError.message : String(connectionError)}`);
-             setIsConnecting(false);
-             ws.current = null;
-        }
-
-    }, [url, isConnecting]); // Added isConnecting dependency
-
-    const disconnect = useCallback((code: number = 1000, reason: string = "User disconnected") => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            console.log(`[useWebSocket] Disconnecting: ${code} - ${reason}`);
-            ws.current.close(code, reason);
-        } else {
-            // console.log('[useWebSocket] Cannot disconnect, socket not open or null.');
-        }
-    }, []);
-
-    const sendMessage = useCallback((data: string | ArrayBuffer | Blob) => {
-        // *** ADD LOG HERE ***
-        const readyState = ws.current?.readyState;
-        console.log(`[useWebSocket] sendMessage called. ReadyState: ${readyState}, Data type: ${typeof data}, Size: ${data instanceof ArrayBuffer ? data.byteLength : data instanceof Blob ? data.size : data.length}`);
-
-        if (ws.current && readyState === WebSocket.OPEN) { // Check explicitly for OPEN (1)
-            try {
-                ws.current.send(data);
-                // console.log('[useWebSocket] sendMessage: Data sent successfully.'); // Optional success log
-            } catch (err) {
-                console.error('[useWebSocket] Error sending message:', err);
-                setError(`Failed to send message: ${err instanceof Error ? err.message : String(err)}`);
-            }
-        } else {
-            console.warn(`[useWebSocket] Cannot send message, socket not open (State: ${readyState}).`);
-            // Avoid setting error state here for transient issues
-        }
-    }, []); // No external dependencies needed here
-
-    // Effect to cleanup WebSocket on unmount
-    useEffect(() => {
-        return () => {
-            // Component is unmounting, perform a clean disconnect
-            disconnect(1001, "Component unmounting");
+        socket.onopen = () => {
+          setIsConnected(true);
+          setIsConnecting(false);
+          retryCount.current = 0;
+          setError(null);
+          onOpenHandler.current?.();
         };
-    }, [disconnect]);
 
-    // Functions to set handlers (add explicit types)
-    const setOnMessageHandler = useCallback((handler: (event: MessageEvent) => void) => {
-        onMessageHandler.current = handler;
-    }, []);
-    const setOnOpenHandler = useCallback((handler: () => void) => {
-        onOpenHandler.current = handler;
-    }, []);
-     const setOnCloseHandler = useCallback((handler: (event: CloseEvent) => void) => {
-        onCloseHandler.current = handler;
-    }, []);
-     const setOnErrorHandler = useCallback((handler: (event: Event) => void) => {
-        onErrorHandler.current = handler;
-    }, []);
+        socket.onmessage = (evt) => {
+          if (onMessageHandler.current) {
+            onMessageHandler.current(evt);
+          } else {
+            console.warn('[useWebSocket] no message handler');
+          }
+        };
 
+        socket.onerror = (evt) => {
+          console.error('[useWebSocket] error', evt);
+          setError('WebSocket error');
+          onErrorHandler.current?.(evt);
+          // leave isConnected/isConnecting here—onclose will handle retries
+        };
 
-    return {
-        connect,
-        disconnect,
-        sendMessage,
-        isConnected,
-        isConnecting,
-        error,
-        setOnMessageHandler,
-        setOnOpenHandler,
-        setOnCloseHandler,
-        setOnErrorHandler,
-        readyState: ws.current?.readyState,
+        socket.onclose = (evt) => {
+          setIsConnected(false);
+          setIsConnecting(false);
+
+          const clean =
+            evt.code === 1000 || evt.code === 1001 || evt.code === 1005;
+          if (!clean && retryCount.current < maxRetries) {
+            const delay = baseDelayMs * 2 ** retryCount.current;
+            console.warn(
+              `[useWebSocket] unexpected close (${evt.code}); retry #${
+                retryCount.current + 1
+              } in ${delay}ms`
+            );
+            setTimeout(() => {
+              retryCount.current += 1;
+              doConnect(false);
+            }, delay);
+          } else if (!clean) {
+            console.error(
+              `[useWebSocket] gave up after ${retryCount.current} retries`
+            );
+          }
+
+          onCloseHandler.current?.(evt);
+        };
+      } catch (e) {
+        console.error('[useWebSocket] connect threw', e);
+        setError(`Init failed: ${e}`);
+        setIsConnecting(false);
+        ws.current = null;
+      }
+    },
+    [url, isConnecting]
+  );
+
+  // public API
+  const connect = useCallback(() => doConnect(true), [doConnect]);
+
+  const disconnect = useCallback(
+    (code = 1000, reason = 'User disconnect') => {
+      // prevent further auto‑retries by forcing a clean close
+      retryCount.current = maxRetries;
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.close(code, reason);
+      }
+    },
+    []
+  );
+
+  const sendMessage = useCallback((data: string | ArrayBuffer | Blob) => {
+    const ready = ws.current?.readyState;
+    console.log(
+      `[useWebSocket] sendMessage: state=${ready}, size=${
+        data instanceof ArrayBuffer
+          ? data.byteLength
+          : data instanceof Blob
+          ? data.size
+          : (data as string).length
+      }`
+    );
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      try {
+        ws.current.send(data);
+      } catch (e) {
+        console.error('[useWebSocket] send error', e);
+        setError(`Send failed: ${e}`);
+      }
+    } else {
+      console.warn(`[useWebSocket] cannot send, state ${ready}`);
+    }
+  }, []);
+
+  // cleanup on unmount
+  useEffect(() => {
+    return () => {
+      retryCount.current = maxRetries;
+      ws.current?.close(1001, 'Component unmount');
     };
+  }, []);
+
+  // setters for user handlers
+  const setOnOpenHandler = useCallback((h: () => void) => {
+    onOpenHandler.current = h;
+  }, []);
+  const setOnMessageHandler = useCallback((h: (e: MessageEvent) => void) => {
+    onMessageHandler.current = h;
+  }, []);
+  const setOnCloseHandler = useCallback((h: (e: CloseEvent) => void) => {
+    onCloseHandler.current = h;
+  }, []);
+  const setOnErrorHandler = useCallback((h: (e: Event) => void) => {
+    onErrorHandler.current = h;
+  }, []);
+
+  return {
+    connect,
+    disconnect,
+    sendMessage,
+    isConnected,
+    isConnecting,
+    error,
+    setOnMessageHandler,
+    setOnOpenHandler,
+    setOnCloseHandler,
+    setOnErrorHandler,
+    readyState: ws.current?.readyState,
+  };
 }

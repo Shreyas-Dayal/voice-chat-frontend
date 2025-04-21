@@ -1,14 +1,5 @@
 import React from 'react';
 
-// Define props interface
-interface StatusBarProps {
-    message: string | null;
-    isConnected: boolean;
-    isAIReady: boolean;
-    isRecording: boolean;
-    isPlaying: boolean; // Renamed from isPlaying for consistency
-}
-
 export const StatusBar: React.FC<StatusBarProps> = ({
     message,
     isConnected,

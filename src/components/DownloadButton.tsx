@@ -1,11 +1,5 @@
 import React from 'react';
 
-// Define props interface
-interface DownloadButtonProps {
-    lastRawAudioBuffer: ArrayBuffer | null;
-    isPlaying: boolean; // Renamed for consistency
-}
-
 // Keep WAV header function here or import from utils
 function addWavHeader(pcmData: ArrayBuffer, sampleRate: number, numChannels: number, bytesPerSample: number): ArrayBuffer {
     // ... (implementation remains the same)

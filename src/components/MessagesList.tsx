@@ -4,6 +4,7 @@ import { Avatar, Typography } from 'antd';
 
 interface Props {
   messages: Message[];
+  isMicMinimized: boolean;
 }
 
 const bubbleStyles = {

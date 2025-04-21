@@ -1,81 +1,90 @@
-// App.tsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+// src/App.tsx
+import React, { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
 import 'antd/dist/reset.css';
-import { Layout, Typography, Space } from 'antd';
-import { BulbOutlined } from '@ant-design/icons';
+import { Layout, Typography, ConfigProvider, App as AntApp } from 'antd'; // Import AntApp and ConfigProvider
 
-// Hooks
+// Hooks - Assuming these are correctly implemented as discussed previously
+import useAudioContext from './hooks/useAudioContext'; // Assuming this provides the ensure function
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
+import useServerEvents from './hooks/useServerEvents'; // Assuming useServerEvents hook exists
 
-// Components
+// Components - Assuming these exist and use inline styles as discussed
 import { MessagesList } from './components/MessagesList';
 import { ControlBar } from './components/ControlBar';
+import { MaximizedView } from './components/MaximizedView';
+import { DownloadButton } from './components/DownloadButton'; // Assuming DownloadButton component exists
 
-// Type
-// — Constants —
-const BACKEND_WS_URL =
-  import.meta.env.VITE_BACKEND_WS_URL || 'ws://localhost:8080';
-const TARGET_SAMPLE_RATE = 24000;
+// Constants
+import { BACKEND_WS_URL, TARGET_SAMPLE_RATE } from './constants';
+import { Content, Footer, Header } from 'antd/es/layout/layout';
 
-// — Helper: wrap raw PCM in a WAV header —
-function addWavHeader(
-  pcmData: ArrayBuffer,
-  sampleRate: number,
-  numChannels: number,
-  bytesPerSample: number
-): ArrayBuffer {
-  const dataSize = pcmData.byteLength;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const writeString = (off: number, s: string) =>
-    Array.from(s).forEach((c, i) =>
-      view.setUint8(off + i, c.charCodeAt(0))
-    );
+// Define Layout styles inline
+const layoutStyle: CSSProperties = {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+};
+const headerStyle: CSSProperties = {
+    background: '#fff', // Changed to white for contrast with dark text
+    borderBottom: '1px solid #f0f0f0',
+    padding: '0 20px',
+    flexShrink: 0, // Prevent header from shrinking
+    display: 'flex',
+    alignItems: 'center',
+};
+const headerTitleStyle: CSSProperties = {
+     color: '#333', // Darker text for white background
+     margin: 0, // Remove default margin
+     lineHeight: '64px', // Align vertically
+};
+const contentStyle: CSSProperties = {
+    flexGrow: 1,
+    overflow: 'hidden', // Important for controlling scroll behavior
+    display: 'flex',
+    flexDirection: 'column', // Children stack vertically
+    position: 'relative', // Needed for absolute positioning of DownloadButton
+};
+const messagesListContainerStyle: CSSProperties = {
+     flexGrow: 1,
+     overflowY: 'auto', // Allow scrolling for messages
+     padding: '1rem',
+     background: '#f7f7f7', // Light background for chat area
+};
+const footerStyle: CSSProperties = {
+    padding: '10px 0', // Reduce vertical padding
+    background: '#fff',
+    borderTop: '1px solid #f0f0f0',
+    flexShrink: 0, // Prevent footer from shrinking
+};
+const downloadButtonContainerStyle: CSSProperties = {
+    position: 'absolute',
+    bottom: '90px', // Position above the minimize button in MaximizedView
+    right: '25px',
+    zIndex: 10,
+};
 
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(
-    28,
-    sampleRate * numChannels * bytesPerSample,
-    true
-  );
-  view.setUint16(32, numChannels * bytesPerSample, true);
-  view.setUint16(34, bytesPerSample * 8, true);
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
-  new Uint8Array(buffer, 44).set(new Uint8Array(pcmData));
-  return buffer;
-}
-
-const { Header, Content, Footer } = Layout;
 
 const App: React.FC = () => {
   // ─── State & Refs ─────────────────────────────────────
-  const [statusMessage, setStatusMessage] = useState<string | null>(
-    'Initializing...'
-  );
+  const [isMicMinimized, setIsMicMinimized] = useState(false); // Start Maximized
+  const [statusMessage, setStatusMessage] = useState<string | null>('Initializing...');
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentUtterance, setCurrentUtterance] = useState<string>('');
-  const [lastRawAudioBuffer, setLastRawAudioBuffer] = useState<
-    ArrayBuffer | null
-  >(null);
+  const [lastRawAudioBuffer, setLastRawAudioBuffer] = useState<ArrayBuffer | null>(null);
   const [isAIReady, setIsAIReady] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null); // Consolidated error state
 
-  const audioContext = useRef<AudioContext | null>(null);
-  const responseChunks = useRef<ArrayBuffer[]>([]);
+  // Use the hook to get the ensure function
+  const ensureAudioContext = useAudioContext();
+  // Ref to hold the actual AudioContext instance once created/resumed
+  const audioContextInstance = useRef<AudioContext | null>(null);
 
   // ─── WebSocket Hook ────────────────────────────────────
   const {
-    connect,
-    disconnect,
+    connect: wsConnect, // Renamed to avoid conflict
+    disconnect: wsDisconnect, // Renamed
     sendMessage,
     isConnected,
     isConnecting,
@@ -85,47 +94,39 @@ const App: React.FC = () => {
     setOnMessageHandler,
   } = useWebSocket(BACKEND_WS_URL);
 
-  // ─── Ensure AudioContext ───────────────────────────────
-  const ensureAudioContext = useCallback(async (): Promise<AudioContext | null> => {
-    if (audioContext.current?.state === 'running') {
-      return audioContext.current;
-    }
-    try {
-      if (!audioContext.current || audioContext.current.state === 'closed') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-          sampleRate: TARGET_SAMPLE_RATE,
-        });
+  // ─── Get AudioContext Instance (Helper) ────────────────
+  // This function ensures the context exists and is running, updating the ref
+  const getAudioContext = useCallback(async (): Promise<AudioContext | null> => {
+      if (audioContextInstance.current && audioContextInstance.current.state === 'running') {
+        return audioContextInstance.current;
       }
-      if (audioContext.current.state === 'suspended') {
-        await audioContext.current.resume();
+      try {
+        const ctx = await ensureAudioContext(); // Call the function from the hook
+        if (ctx) {
+            audioContextInstance.current = ctx; // Store the obtained context
+            return ctx;
+        } else {
+            throw new Error("AudioContext creation/resume failed.");
+        }
+      } catch (e) {
+          const errorMsg = `Audio Context Error: ${e instanceof Error ? e.message : String(e)}`;
+          console.error(errorMsg, e);
+          setLastError(errorMsg);
+          setStatusMessage("Audio System Error");
+          audioContextInstance.current = null;
+          return null;
       }
-      if (audioContext.current.state !== 'running') {
-        throw new Error(`Bad state: ${audioContext.current.state}`);
-      }
-      return audioContext.current;
-    } catch (e) {
-      console.error('AudioContext failed:', e);
-      setStatusMessage(
-        `Audio init error: ${
-          e instanceof Error ? e.message : String(e)
-        }`
-      );
-      if (audioContext.current) {
-        await audioContext.current.close().catch(() => {});
-      }
-      audioContext.current = null;
-      return null;
-    }
-  }, []);
+  }, [ensureAudioContext]); // Dependency on the function from the hook
 
   // ─── Send PCM to backend ───────────────────────────────
   const handleAudioData = useCallback(
     (pcm: ArrayBuffer) => {
-      if (isConnected) sendMessage(pcm);
-      else console.warn('WS not ready; dropping audio chunk');
+      if (isConnected && isAIReady) { // Also check if AI is ready before sending
+          sendMessage(pcm);
+      }
+      // else console.warn('WS not ready or AI not ready; dropping audio chunk');
     },
-    [isConnected, sendMessage]
+    [isConnected, isAIReady, sendMessage]
   );
 
   // ─── Recorder & Player Hooks ───────────────────────────
@@ -135,9 +136,10 @@ const App: React.FC = () => {
     stopRecording,
     error: recorderError,
   } = useAudioRecorder(
-    audioContext.current,
+    audioContextInstance.current, // Pass the *current value* of the ref
     handleAudioData,
     TARGET_SAMPLE_RATE
+    // Hook internally checks if context is valid before using it
   );
 
   const {
@@ -145,140 +147,127 @@ const App: React.FC = () => {
     playAudio,
     stopPlayback,
     error: playerError,
-  } = useAudioPlayer(ensureAudioContext, TARGET_SAMPLE_RATE);
+  } = useAudioPlayer(
+      ensureAudioContext, // Pass the ensure function directly to the player hook
+      TARGET_SAMPLE_RATE
+    );
 
-  // ─── Server‐side Event Handling ────────────────────────
-  const handleServerEvent = useCallback(
-    (name: string, data: HandledServerEvent) => {
-      switch (name) {
-        case 'AIConnected':
-          setIsAIReady(true);
-          setStatusMessage('AI Ready');
-          break;
-
-        case 'AIResponseStart':
-          setCurrentUtterance('');
-          setStatusMessage('AI Thinking...');
-          responseChunks.current = [];
-          setLastRawAudioBuffer(null);
-          if (isAISpeaking) stopPlayback();
-          break;
-
-        case 'AIResponseEnd': {
-          const evt = data as ServerEventAIResponseEnd;
-          const text = evt.finalText?.trim() || '[Audio only]';
-          setMessages((m) => [
-            ...m,
-            { id: `ai-${Date.now()}`, sender: 'ai', text, timestamp: Date.now() },
-          ]);
-          setCurrentUtterance('');
-
-          if (responseChunks.current.length) {
-            // concatenate & play
-            const total = responseChunks.current.reduce(
-              (sum, b) => sum + b.byteLength,
-              0
-            );
-            const buf = new ArrayBuffer(total);
-            const view = new Uint8Array(buf);
-            let offset = 0;
-            for (const chunk of responseChunks.current) {
-              view.set(new Uint8Array(chunk), offset);
-              offset += chunk.byteLength;
-            }
-            setLastRawAudioBuffer(buf);
-            playAudio(buf).catch((e) =>
-              setStatusMessage(`Playback error: ${e}`)
-            );
-          } else {
-            setStatusMessage(isAIReady ? 'AI Ready' : 'Connected…');
-            setLastRawAudioBuffer(null);
-          }
-
-          responseChunks.current = [];
-          break;
-        }
-      }
-    },
-    [isAISpeaking, playAudio, stopPlayback, isAIReady]
-  );
-
-  const handleWsMessage = useCallback(
-    (evt: MessageEvent) => {
-      if (typeof evt.data === 'string') {
-        try {
-          const msg = JSON.parse(evt.data);
-          if (msg.type === 'event' && msg.name) {
-            handleServerEvent(msg.name, msg);
-          } else if (msg.type === 'textDelta' && msg.text) {
-            setCurrentUtterance((u) => u + msg.text);
-          } else if (msg.type === 'error') {
-            setStatusMessage(`Error: ${msg.message}`);
-          }
-        } catch {
-          console.error('Invalid JSON:', evt.data);
-        }
-      } else if (evt.data instanceof ArrayBuffer) {
-        responseChunks.current.push(evt.data);
-      }
-    },
-    [handleServerEvent]
+  // ─── Server Event Hook ─────────────────────────────────
+  // Using the dedicated hook for clarity
+  const { handleMessage: handleWsMessage } = useServerEvents(
+      isAISpeaking,
+      playAudio,
+      stopPlayback,
+      isAIReady,
+      setStatusMessage,
+      setIsAIReady,
+      setMessages,
+      setCurrentUtterance,
+      setLastRawAudioBuffer // Pass the setter for the download buffer
   );
 
   // ─── Wire up WS handlers ────────────────────────────────
   useEffect(() => {
     setOnOpenHandler(() => {
-      setStatusMessage('Connected to backend…');
-      setIsAIReady(false);
+      setStatusMessage('Connected, waiting for AI...');
+      setIsAIReady(false); // Reset on new connection
+      setLastError(null);
     });
-    setOnCloseHandler(() => {
-      setStatusMessage('Disconnected');
+    setOnCloseHandler((ev) => {
+      setStatusMessage(`Disconnected: ${ev.reason || `Code ${ev.code}`}`);
       setIsAIReady(false);
-      stopRecording();
-      stopPlayback();
+      if (isRecording) stopRecording(); // Stop recording if disconnected
+      if (isAISpeaking) stopPlayback(); // Stop playback
+      if (ev.code !== 1000 && ev.code !== 1001) { // Log unexpected close
+          const errorMsg = `WebSocket closed unexpectedly (Code: ${ev.code})`;
+           setLastError(errorMsg);
+           console.warn(errorMsg);
+      } else {
+           setLastError(null);
+      }
     });
-    setOnMessageHandler(handleWsMessage);
+    setOnMessageHandler(handleWsMessage); // Use handler from useServerEvents
   }, [
     setOnOpenHandler,
     setOnCloseHandler,
     setOnMessageHandler,
-    handleWsMessage,
+    handleWsMessage, // Add dependency
+    isRecording,    // Add dependency
+    isAISpeaking,   // Add dependency
     stopRecording,
     stopPlayback,
   ]);
 
   // ─── Auto‐connect on mount ──────────────────────────────
-  const handleConnect = useCallback(() => {
+  const connect = useCallback(() => {
     if (isConnected || isConnecting) return;
-    ensureAudioContext().then((ac) => {
-      if (ac) connect();
-      else setStatusMessage('Cannot connect: audio init failed');
+    // Ensure audio context *before* attempting WS connection
+    getAudioContext().then((ac) => {
+      if (ac) {
+          setStatusMessage('Connecting to backend...');
+          wsConnect(); // Connect WebSocket only if audio is ready
+      } else {
+          // Error message already set by getAudioContext
+      }
     });
-  }, [isConnected, isConnecting, ensureAudioContext, connect]);
+  }, [isConnected, isConnecting, getAudioContext, wsConnect]);
 
   useEffect(() => {
-    handleConnect();
-  }, [handleConnect]);
+    connect(); // Attempt connection on mount
+  }, [connect]); // Include connect in dependency array
+
 
   // ─── Mic toggle ────────────────────────────────────────
   const handleMicClick = useCallback(async () => {
+    setLastError(null); // Clear previous error on interaction
+
     if (isRecording) {
       stopRecording();
-      setStatusMessage('Processing your speech…');
+      // Maybe set status to "Processing..." or similar? Depends on backend speed.
+      // setStatusMessage('Processing...');
     } else {
-      if (!isConnected || !isAIReady || isConnecting) {
-        if (!isConnected && !isConnecting) handleConnect();
-        return;
+      // Pre-checks
+      if (!isConnected) {
+          setLastError("Not connected to the server.");
+          setStatusMessage("Disconnected");
+          return;
       }
-      const ac = await ensureAudioContext();
+       if (!isAIReady) {
+          setLastError("AI service is not ready yet.");
+          setStatusMessage("Waiting for AI...");
+          return;
+      }
+      if (isConnecting) {
+          setLastError("Still connecting...");
+          setStatusMessage("Connecting...");
+          return;
+      }
+
+      // Ensure Audio Context is active *before* starting
+      const ac = await getAudioContext();
       if (!ac) {
-        setStatusMessage('Cannot record: audio init failed');
+        // Error state/message handled within getAudioContext
         return;
       }
-      if (isAISpeaking) stopPlayback();
-      setCurrentUtterance('');
-      await startRecording();
-      setStatusMessage('Listening…');
+
+      // Stop AI playback if user interrupts
+      if (isAISpeaking) {
+          stopPlayback();
+      }
+
+      // Clear previous AI utterance if needed
+      // setCurrentUtterance('');
+
+      // Attempt to start recording
+      try {
+          await startRecording(); // Assumes startRecording is async and might throw/return errors
+          // setStatusMessage('Listening...'); // Status set by recorder hook might be sufficient
+      } catch (err) {
+          const errorMsg = `Microphone Error: ${err instanceof Error ? err.message : String(err)}`;
+          console.error(errorMsg, err);
+          setLastError(errorMsg);
+          setStatusMessage("Mic Error");
+      }
     }
   }, [
     isRecording,
@@ -286,104 +275,113 @@ const App: React.FC = () => {
     isAIReady,
     isConnecting,
     isAISpeaking,
-    ensureAudioContext,
+    getAudioContext, // Use the helper
     startRecording,
     stopRecording,
     stopPlayback,
-    handleConnect,
   ]);
 
-  // ─── Download last response ────────────────────────────
-  const handleDownload = useCallback(() => {
-    if (!lastRawAudioBuffer) {
-      alert('No audio to download.');
-      return;
-    }
-    try {
-      const wav = addWavHeader(
-        lastRawAudioBuffer,
-        TARGET_SAMPLE_RATE,
-        1,
-        2
-      );
-      const blob = new Blob([wav], { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `response_${Date.now()}.wav`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert(`Download failed: ${e}`);
-    }
-  }, [lastRawAudioBuffer]);
+  // --- Minimize/Maximize Toggle ---
+  const toggleMicMinimize = useCallback(() => {
+      setIsMicMinimized(prev => !prev);
+  }, []);
 
   // ─── Show any hook errors ──────────────────────────────
   useEffect(() => {
-    if (wsError) setStatusMessage(`WS error: ${wsError}`);
-  }, [wsError]);
-  useEffect(() => {
-    if (recorderError) setStatusMessage(`Record error: ${recorderError}`);
-  }, [recorderError]);
-  useEffect(() => {
-    if (playerError) setStatusMessage(`Play error: ${playerError}`);
-  }, [playerError]);
+    const currentError = wsError || recorderError || playerError;
+    if (currentError && currentError !== lastError) { // Only update if error changes
+      setLastError(currentError);
+      // Use a more specific status message if possible, or keep the hook's message
+      // setStatusMessage(`Error: ${currentError}`);
+      console.error("Error State Updated:", currentError);
+    }
+    // Reset error if connection recovers and no other errors exist? (Optional)
+    // if (isConnected && !currentError && lastError) {
+    //    setLastError(null);
+    // }
+
+  }, [wsError, recorderError, playerError, lastError, isConnected]); // Added isConnected
+
 
   // ─── Cleanup on unmount ────────────────────────────────
   useEffect(() => {
     return () => {
-      if (audioContext.current && audioContext.current.state !== 'closed') {
-        audioContext.current.close().catch(() => {});
+      if (audioContextInstance.current && audioContextInstance.current.state !== 'closed') {
+        audioContextInstance.current.close().catch(() => {});
       }
-      disconnect(1001, 'Unmounting');
+      wsDisconnect(1001, 'Component Unmounting'); // Use renamed disconnect
     };
-  }, [disconnect]);
+  }, [wsDisconnect]); // Dependency on renamed disconnect
 
   // ─── Render ────────────────────────────────────────────
   return (
-    <Layout style={{ height: '100vh' }}>
-      <Header
-        style={{ display: 'flex', alignItems: 'center', padding: '0 16px' }}
-      >
-        <Typography.Title level={3} style={{ color: '#fff', margin: 0 }}>
-          VoiceChat AI
-        </Typography.Title>
-        <Space style={{ marginLeft: 'auto' }}>
-          <BulbOutlined
-            onClick={() =>
-              document.documentElement.classList.toggle('dark')
-            }
-            style={{ color: '#fff', fontSize: '1.4rem', cursor: 'pointer' }}
-            title="Toggle Dark Mode"
-          />
-        </Space>
-      </Header>
+    // Wrap with AntD providers for theme and context (like message API)
+    <ConfigProvider theme={{ /* Customize AntD theme if needed */ }}>
+        <AntApp>
+            <Layout style={layoutStyle}>
+                <Header style={headerStyle}>
+                    <Typography.Title level={4} style={headerTitleStyle}>
+                    VoiceChat AI
+                    </Typography.Title>
+                    {/* Add other header items like settings icon if needed */}
+                </Header>
 
-      <Content style={{ padding: '16px', overflow: 'hidden' }}>
-        <MessagesList messages={messages} />
-        {currentUtterance && (
-          <Typography.Text italic style={{ marginTop: 8, display: 'block' }}>
-            AI: {currentUtterance}
-          </Typography.Text>
-        )}
-      </Content>
-
-      <Footer style={{ padding: '8px 16px' }}>
-        <ControlBar
-          isRecording={isRecording}
-          isConnecting={isConnecting}
-          isConnected={isConnected}
-          isAIReady={isAIReady}
-          isAISpeaking={isAISpeaking}
-          statusMessage={statusMessage}
-          onMicClick={handleMicClick}
-          onDownload={handleDownload}
-          hasDownload={!!lastRawAudioBuffer}
-        />
-      </Footer>
-    </Layout>
+                {/* Content area switches layout based on isMicMinimized */}
+                <Content style={contentStyle}>
+                    {!isMicMinimized ? (
+                        // Maximized View (Large Mic)
+                        <MaximizedView
+                            isRecording={isRecording}
+                            isConnecting={isConnecting}
+                            isConnected={isConnected}
+                            isAIReady={isAIReady}
+                            isAISpeaking={isAISpeaking}
+                            statusMessage={statusMessage} // Pass status for context
+                            onMicClick={handleMicClick}
+                            toggleMicMinimize={toggleMicMinimize}
+                            error={lastError} // Pass consolidated error
+                        />
+                    ) : (
+                        // Minimized View (Chat + Control Bar)
+                        <>
+                            {/* Container for scrollable messages */}
+                            <div style={messagesListContainerStyle}>
+                                <MessagesList messages={messages} isMicMinimized={isMicMinimized} />
+                                {/* Optionally display live AI utterance transcription here */}
+                                {currentUtterance && !isAISpeaking && (
+                                    <Typography.Text italic style={{ padding: '0 1rem', color: '#888', display: 'block' }}>
+                                        AI: {currentUtterance}...
+                                    </Typography.Text>
+                                )}
+                            </div>
+                            {/* Footer sticks to bottom */}
+                            <Footer style={footerStyle}>
+                                <ControlBar
+                                    isRecording={isRecording}
+                                    isConnecting={isConnecting}
+                                    isConnected={isConnected}
+                                    isAIReady={isAIReady}
+                                    isAISpeaking={isAISpeaking}
+                                    statusMessage={statusMessage}
+                                    onMicClick={handleMicClick}
+                                    isMicMinimized={isMicMinimized}
+                                    toggleMicMinimize={toggleMicMinimize}
+                                    error={lastError}
+                                />
+                            </Footer>
+                        </>
+                    )}
+                     {/* Download Button positioned absolutely in Maximized view */}
+                     {/* Only show when not minimized, AI not speaking, and buffer exists */}
+                    {!isMicMinimized && !isAISpeaking && lastRawAudioBuffer && (
+                        <div style={downloadButtonContainerStyle}>
+                            <DownloadButton lastRawAudioBuffer={lastRawAudioBuffer} isPlaying={isAISpeaking} />
+                        </div>
+                    )}
+                </Content>
+            </Layout>
+      </AntApp>
+    </ConfigProvider>
   );
 };
 

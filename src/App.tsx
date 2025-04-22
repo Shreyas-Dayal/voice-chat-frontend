@@ -3,18 +3,18 @@ import React, { useState, useEffect, useRef, useCallback, CSSProperties } from '
 // import 'antd/dist/reset.css';
 import { Layout, Typography, ConfigProvider, App as AntApp, Tooltip, Button, Space, theme } from 'antd'; // Import AntApp and ConfigProvider
 
-// Hooks - Assuming these are correctly implemented as discussed previously
-import useAudioContext from './hooks/useAudioContext'; // Assuming this provides the ensure function
+// Hooks
+import useAudioContext from './hooks/useAudioContext'; 
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
-import useServerEvents from './hooks/useServerEvents'; // Assuming useServerEvents hook exists
+import useServerEvents from './hooks/useServerEvents';
 
-// Components - Assuming these exist and use inline styles as discussed
+// Components
 import { MessagesList } from './components/MessagesList';
 import { ControlBar } from './components/ControlBar';
 import { MaximizedView } from './components/MaximizedView';
-import { DownloadButton } from './components/DownloadButton'; // Assuming DownloadButton component exists
+import { DownloadButton } from './components/DownloadButton';
 
 // Constants
 import { BACKEND_WS_URL, TARGET_SAMPLE_RATE } from './constants';
